@@ -85,35 +85,72 @@ fun checkUser(address: UserAddress): Boolean {
     }
 }
 
+interface DataProcessor {
+    fun addUser(name: String, userAddress: UserAddress)
+    fun deleteUser(name: String)
+    fun isUserRegistered(name: String): Boolean
+    fun getUsersMap(): ConcurrentHashMap<String, UserAddress>
+    fun clear()
+    fun updateAttempts()
+}
+
+class HashMapProcessor: DataProcessor {
+    private val users = ConcurrentHashMap<String, UserAddress>()
+    private val numberOfAttempts = ConcurrentHashMap<String, Int>()
+
+    override fun addUser(name: String, userAddress: UserAddress) {
+        users[name] = userAddress
+        numberOfAttempts[name] = 0
+    }
+
+    override fun deleteUser(name: String) {
+        users.remove(name)
+        numberOfAttempts.remove(name)
+    }
+
+    override fun isUserRegistered(name: String): Boolean {
+        return users.containsKey(name)
+    }
+
+    override fun getUsersMap(): ConcurrentHashMap<String, UserAddress> {
+        return users
+    }
+
+    override fun clear() {
+        users.clear()
+    }
+
+    override fun updateAttempts() {
+        for ((user, address) in users) {
+            numberOfAttempts[user]?.let {
+                if (!checkUser(address))
+                    numberOfAttempts[user] = it + 1
+                else
+                    numberOfAttempts[user] = 0
+            }
+
+            if (numberOfAttempts[user] == 3)
+                deleteUser(user)
+        }
+    }
+
+}
+
+val Registry: DataProcessor = HashMapProcessor()
+
 fun main(args: Array<String>) {
     thread {
         while (true) {
             Thread.sleep(1000 * 120)
-            for ((user, address) in Registry.users) {
-                Registry.numberOfAttempts[user]?.let {
-                    if (!checkUser(address))
-                        Registry.numberOfAttempts[user] = it + 1
-                    else
-                        Registry.numberOfAttempts[user] = 0
-                }
+            Registry.updateAttempts()
 
-                if (Registry.numberOfAttempts[user] == 3)
-                    deleteUser(user)
-            }
         }
     }
     EngineMain.main(args)
 }
 
-object Registry {
-    val users = ConcurrentHashMap<String, UserAddress>()
-    val numberOfAttempts = ConcurrentHashMap<String, Int>()
-}
 
-fun deleteUser(name: String) {
-    Registry.users.remove(name)
-    Registry.numberOfAttempts.remove(name)
-}
+
 
 @Suppress("UNUSED_PARAMETER")
 @JvmOverloads
@@ -148,30 +185,28 @@ fun Application.module(testing: Boolean = false) {
             val user = call.receive<UserInfo>()
             val name = user.name
             checkUserName(name) ?: throw IllegalUserNameException()
-            if (Registry.users.containsKey(name)) {
+            if (Registry.isUserRegistered(name)) {
                 throw UserAlreadyRegisteredException()
             }
-            Registry.users[name] = user.address
-            Registry.numberOfAttempts[name] = 0
+            Registry.addUser(name, user.address)
             call.respond(mapOf("status" to "ok"))
         }
 
         get("/v1/users") {
-            call.respond(Registry.users)
+            call.respond(Registry.getUsersMap())
         }
 
         put("/v1/users/{name}") {
             val address = call.receive<UserAddress>()
             val name: String = call.parameters["name"].toString()
             checkUserName(name) ?: throw IllegalUserNameException()
-            Registry.users[name] = address
-            Registry.numberOfAttempts[name] = 0
+            Registry.addUser(name, address)
             call.respond(mapOf("status" to "ok"))
         }
 
         delete("/v1/users/{name}") {
             val name: String = call.parameters["name"].toString()
-            deleteUser(name)
+            Registry.deleteUser(name)
             call.respond(mapOf("status" to "ok"))
         }
     }

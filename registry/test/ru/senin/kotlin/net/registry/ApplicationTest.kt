@@ -33,7 +33,7 @@ class ApplicationTest {
 
     @BeforeEach
     fun clearRegistry() {
-        Registry.users.clear()
+        Registry.clear()
     }
 
     @Test
