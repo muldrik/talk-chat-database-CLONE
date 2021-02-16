@@ -1,7 +1,11 @@
 package ru.senin.kotlin.net
 
-import ru.senin.kotlin.net.server.ChatClient
+import ru.senin.kotlin.net.client.ChatClient
+import ru.senin.kotlin.net.client.HttpChatClient
+import ru.senin.kotlin.net.client.UdpChatClient
+import ru.senin.kotlin.net.client.WebSocketChatClient
 import ru.senin.kotlin.net.server.ChatMessageListener
+import kotlin.concurrent.thread
 
 class Chat(
     private val name: String,
@@ -11,7 +15,7 @@ class Chat(
     private var exit = false
     private var selectedUser: String? = null
     private val clients = mutableMapOf<String, ChatClient>()
-    private var users =  mutableMapOf<String, UserAddress>()
+    private var users = mutableMapOf<String, UserAddress>()
 
     private fun prompt(): String {
         val prompt = "  to [${selectedUser ?: "<not selected>"}] <<< "
@@ -49,10 +53,6 @@ class Chat(
             println("Unknown user '$userName'")
             return
         }
-        if (userAddress.protocol !in ClientFactory.supportedProtocols()) {
-            println("Protocol '${userAddress.protocol}' not supported")
-            return
-        }
         selectedUser = userName
     }
 
@@ -72,13 +72,16 @@ class Chat(
             return
         }
         val client = clients.getOrPut(currentUser) {
-            ClientFactory.create(address.protocol, address.host, address.port)
+            when (address.protocol) {
+                Protocol.WEBSOCKET -> WebSocketChatClient(address.host, address.port)
+                Protocol.UDP -> UdpChatClient(address.host, address.port)
+                else -> HttpChatClient(address.host, address.port)
+            }
         }
         try {
             client.sendMessage(Message(name, text))
-        }
-        catch(e: Exception) {
-            println("Error! ${e.message}")
+        } catch (e: Exception) {
+            log.error("Error! ${e.message}", e)
         }
     }
 
@@ -95,25 +98,36 @@ class Chat(
                     val userName = input.split("""\s+""".toRegex()).drop(1).joinToString(" ")
                     selectUser(userName)
                 }
-                "" -> {}
-                else -> message(input)
+                "" -> {
+                }
+                else -> thread {
+                    message(input)
+                }
             }
         }
     }
 
     private fun printWelcome() {
         println(
-            """      
-                     \ | /
-                 ^  -  O  -  
-                / \^ / | \   Hi, $name
-               /  / \        Welcome to Chat! 
-              /  /   \ ============================   
+            """
+                          Был бы                      
+             _______     _       _       _   __   
+            |__   __|   / \     | |     | | / /   
+               | |     / ^ \    | |     | |/ /    
+               | |    / /_\ \   | |     |    \     
+               | |   / _____ \  | |___  | |\  \    
+               |_|  /_/     \_\ |_____| |_| \__\ () () ()   
+                                     
+                    \ | /
+                ^  -  O  -  
+               / \^ / | \   
+              /  / \        Hi, $name
+             /  /   \     Welcome to Chat!
             """.trimIndent()
         )
     }
 
-    override fun messageReceived(userName: String, text: String) {
-        println("\nfrom [$userName] >>> $text")
+    override fun messageReceived(message: Message) {
+        println("\nfrom [${message.user}] >>> ${message.text}")
     }
 }

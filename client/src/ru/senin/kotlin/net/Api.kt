@@ -5,6 +5,9 @@ import retrofit2.Response
 import retrofit2.http.*
 
 interface RegistryApi {
+    @GET("/v1/health")
+    fun check(): Call<Map<String, String>>
+
     @POST("/v1/users")
     fun register(@Body newUserInfo: UserInfo): Call<Map<String, String>>
 
@@ -23,7 +26,7 @@ interface HttpApi {
     fun sendMessage(@Body message: Message): Call<Map<String, String>>
 }
 
-fun <T> Response<T>.getOrNull() : T? {
+fun <T> Response<T>.getOrNull(): T? {
     if (!this.isSuccessful) {
         return null
     }
