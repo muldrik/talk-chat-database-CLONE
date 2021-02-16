@@ -1,9 +1,9 @@
 group = "ru.senin.kotlin.net.client"
-application.mainClassName = "io.ktor.server.netty.EngineMain"
+application.mainClassName = "ru.senin.kotlin.net.MainKt"
 
 dependencies {
     implementation(project(":shared"))
-    
+
     implementation("com.apurebase:arkenv:3.1.0")
 
     val ktor_version: String by project
@@ -22,9 +22,11 @@ dependencies {
     implementation("io.ktor:ktor-websockets:$ktor_version")
     implementation("io.ktor:ktor-client-websockets:$ktor_version")
     implementation("io.ktor:ktor-client-logging:$ktor_version")
-    
+
     implementation("com.squareup.retrofit2:retrofit:$retrofit_version")
     implementation("com.squareup.retrofit2:converter-jackson:$retrofit_version")
-    
+
     testImplementation("io.ktor:ktor-server-tests:$ktor_version")
 }
+
+val run by tasks.getting(JavaExec::class) { standardInput = System.`in` }

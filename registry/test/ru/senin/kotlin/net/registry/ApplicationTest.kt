@@ -27,6 +27,8 @@ class ApplicationTest {
     private val objectMapper = jacksonObjectMapper()
     private val testUserName = "pupkin"
     private val testHttpAddress = UserAddress(Protocol.HTTP, "127.0.0.1", 9999)
+    private val testHttpAddressUpdated = UserAddress(Protocol.UDP, "127.0.0.1", 8888)
+    private val newTestHttpAddress = UserAddress(Protocol.WEBSOCKET, "127.0.0.1", 1234)
     private val userData = UserInfo(testUserName, testHttpAddress)
 
     @BeforeEach
@@ -39,44 +41,78 @@ class ApplicationTest {
         withTestApplication({ testModule() }) {
             handleRequest(HttpMethod.Get, "/v1/health").apply {
                 assertEquals(HttpStatusCode.OK, response.status())
-                assertEquals("OK", response.content)
+                assertEquals(mapOf("status" to "ok"), objectMapper.readValue(response.content ?: ""))
             }
         }
     }
 
     @Test
-    fun `register user`() = withRegisteredTestUser { }
+    fun `register user`() {
+        val newTestUserName = "НИКИТА"
+        val newTestHttpAddress = UserAddress(Protocol.WEBSOCKET, "127.0.0.1", 7777)
+        val newUserData = UserInfo(newTestUserName, newTestHttpAddress)
+
+        tryToRegister(userData, HttpStatusCode.OK)
+        tryToRegister(userData, HttpStatusCode.Conflict)
+        tryToRegister(newUserData, HttpStatusCode.BadRequest)
+
+    }
 
     @Test
     fun `list users`() = withRegisteredTestUser {
-        handleRequest {
-            method = HttpMethod.Get
-            uri = "/v1/users"
-        }.apply {
+        handleRequest(HttpMethod.Get, "/v1/users").apply {
             assertEquals(HttpStatusCode.OK, response.status())
-            val content = response.content ?: fail("No response content")
-            val users = objectMapper.readValue<Map<String, UserAddress>>(content)
-            assertEquals(1, users.size)
-            assertEquals(testUserName, users.keys.first())
-            assertEquals(testHttpAddress, users[testUserName])
+            assertEquals(mapOf(userData.name to userData.address), objectMapper.readValue(response.content ?: ""))
         }
     }
 
     @Test
+    fun `update user`() = withRegisteredTestUser {
+
+        tryToUpdate(testUserName, testHttpAddressUpdated)
+        tryToUpdate(testUserName, newTestHttpAddress)
+        tryToUpdate("klimoza", newTestHttpAddress)
+
+    }
+
+    @Test
     fun `delete user`() = withRegisteredTestUser {
-        handleRequest {
-            method = HttpMethod.Delete
-            uri = "/v1/users/$testUserName"
-        }.apply {
-            assertEquals(HttpStatusCode.OK, response.status())
-            handleRequest {
-                method = HttpMethod.Get
-                uri = "/v1/users"
+
+        tryToDelete(testUserName)
+        tryToDelete(testUserName)
+        tryToDelete("klimoza")
+        tryToDelete("1234")
+
+    }
+
+    private fun tryToRegister(user: UserInfo, statusCode: HttpStatusCode) {
+        withTestApplication({ testModule() }) {
+            handleRequest(HttpMethod.Post, "/v1/users") {
+                addHeader("Content-Type", "application/json")
+                setBody(objectMapper.writeValueAsString(user))
+            }.apply {
+                assertEquals(statusCode, response.status())
+            }
+        }
+    }
+
+    private fun tryToUpdate(userName: String, finalAddress: UserAddress) {
+        withTestApplication({ testModule() }) {
+            handleRequest(HttpMethod.Put, "/v1/users/$userName") {
+                addHeader("Content-Type", "application/json")
+                setBody(objectMapper.writeValueAsString(finalAddress))
             }.apply {
                 assertEquals(HttpStatusCode.OK, response.status())
-                val content = response.content ?: fail("No response content")
-                val users = objectMapper.readValue<Map<String, *>>(content)
-                assertEquals(0, users.size)
+                assertEquals(mapOf("status" to "ok"), objectMapper.readValue(response.content ?: ""))
+            }
+        }
+    }
+
+    private fun tryToDelete(userName: String) {
+        withTestApplication({ testModule() }) {
+            handleRequest(HttpMethod.Delete, "/v1/users/$userName").apply {
+                assertEquals(HttpStatusCode.OK, response.status())
+                assertEquals(mapOf("status" to "ok"), objectMapper.readValue(response.content ?: ""))
             }
         }
     }
@@ -91,7 +127,7 @@ class ApplicationTest {
             }.apply {
                 assertEquals(HttpStatusCode.OK, response.status())
                 val content = response.content ?: fail("No response content")
-                val info = objectMapper.readValue<HashMap<String,String>>(content)
+                val info = objectMapper.readValue<HashMap<String, String>>(content)
 
                 assertNotNull(info["status"])
                 assertEquals("ok", info["status"])

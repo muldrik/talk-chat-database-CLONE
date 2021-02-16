@@ -8,68 +8,47 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import retrofit2.Retrofit
 import retrofit2.converter.jackson.JacksonConverterFactory
-import ru.senin.kotlin.net.client.HttpChatClient
-import ru.senin.kotlin.net.client.UdpChatClient
-import ru.senin.kotlin.net.client.WebSocketChatClient
-import ru.senin.kotlin.net.server.*
+import ru.senin.kotlin.net.server.ChatServer
+import ru.senin.kotlin.net.server.HttpChatServer
+import ru.senin.kotlin.net.server.UdpChatServer
+import ru.senin.kotlin.net.server.WebSocketChatServer
 import java.net.URL
 import kotlin.concurrent.thread
 
 class Parameters : Arkenv() {
-    val name : String by argument("--name") {
+    val name: String by argument("--name") {
         description = "Name of user"
+        defaultValue = { "Pivomaster" }
     }
 
-    val registryBaseUrl : String by argument("--registry"){
+    val protocol: String by argument("--protocol") {
+        description = "Protocol"
+        defaultValue = { "HTTP" }
+    }
+
+    val registryBaseUrl: String by argument("--registry") {
         description = "Base URL of User Registry"
-        defaultValue = { "http://localhost:8088" }
+        defaultValue = { "http://127.0.0.1:8088" }
     }
 
-    val host : String by argument("--host"){
+    val host: String by argument("--host") {
         description = "Hostname or IP to listen on"
-        defaultValue = { "127.0.0.1" }
+        defaultValue = { "0.0.0.0" } // 0.0.0.0 - listen on all network interfaces
     }
 
-    val port : Int by argument("--port") {
+    val port: Int by argument("--port") {
         description = "Port to listen for on"
-        defaultValue = { 8080 }
+        defaultValue = { Protocol.valueOf(protocol).defaultPort }
     }
 
-    val publicUrl : String? by argument("--public-url") {
+    val publicUrl: String? by argument("--public-url") {
         description = "Public URL"
     }
 
-    val protocol : Protocol by argument("--protocol") {
-        description = "protocol (HTTP, WEBSOCKET, UDP)"
-        defaultValue = { Protocol.HTTP }
-        mapping = { Protocol.valueOf(it) }
-    }
 }
 
 val log: Logger = LoggerFactory.getLogger("main")
-lateinit var parameters : Parameters
-
-object ServerFactory : ChatServerFactory {
-    override fun create(protocol: Protocol, host: String, port: Int): ChatServer {
-        return when (protocol) {
-            Protocol.HTTP -> HttpChatServer(host, port)
-            Protocol.WEBSOCKET -> WebSocketChatServer(host, port)
-            Protocol.UDP -> UdpChatServer(host, port)
-        }
-    }
-}
-
-object ClientFactory : ChatClientFactory {
-    override fun create(protocol: Protocol, host: String, port: Int): ChatClient {
-        return when (protocol) {
-            Protocol.HTTP -> HttpChatClient(host, port)
-            Protocol.WEBSOCKET -> WebSocketChatClient(host, port)
-            Protocol.UDP -> UdpChatClient(host, port)
-        }
-    }
-
-    override fun supportedProtocols(): Set<Protocol> = setOf( Protocol.HTTP, Protocol.WEBSOCKET, Protocol.UDP )
-}
+lateinit var parameters: Parameters
 
 fun main(args: Array<String>) {
     try {
@@ -79,15 +58,14 @@ fun main(args: Array<String>) {
             println(parameters.toString())
             return
         }
+        val protocol = Protocol.valueOf(parameters.protocol)
         val host = parameters.host
         val port = parameters.port
 
-        // TODO: validate host and port
+        checkUserAddress(host, port) ?: throw IllegalArgumentException("Illegal address '${host}:${port}'")
 
         val name = parameters.name
         checkUserName(name) ?: throw IllegalArgumentException("Illegal user name '$name'")
-
-        val protocol = parameters.protocol
 
         // initialize registry interface
         val objectMapper = jacksonObjectMapper()
@@ -96,10 +74,16 @@ fun main(args: Array<String>) {
             .addConverterFactory(JacksonConverterFactory.create(objectMapper))
             .build().create(RegistryApi::class.java)
 
+        //Check if we can connect the registry
+        registry.check().execute()
+
         // create server engine
-        val server = ServerFactory.create(protocol, host, port)
+        val server: ChatServer = when (protocol) {
+            Protocol.WEBSOCKET -> WebSocketChatServer(host, port)
+            Protocol.UDP -> UdpChatServer(host, port)
+            else -> HttpChatServer(host, port)
+        }
         val chat = Chat(name, registry)
-        server.setMessageListener(chat)
 
         // start server as separate job
         val serverJob = thread {
@@ -107,25 +91,24 @@ fun main(args: Array<String>) {
         }
         try {
             // register our client
-            if (parameters.publicUrl != null) {
-                val url = URL(parameters.publicUrl)
-                registry.register(UserInfo(name, UserAddress(Protocol.valueOf(url.protocol.toUpperCase()), url.host, url.port))).execute()
+            val userAddress = when {
+                parameters.publicUrl != null -> {
+                    val url = URL(parameters.publicUrl)
+                    UserAddress(Protocol.valueOf(url.protocol), url.host, url.port)
+                }
+                else -> UserAddress(protocol, host, port)
             }
-            else {
-                registry.register(UserInfo(name, UserAddress(protocol, host, port))).execute()
-            }
+            registry.register(UserInfo(name, userAddress)).execute()
 
             // start
             chat.commandLoop()
-        }
-        finally {
+        } finally {
             registry.unregister(name).execute()
             server.stop()
             serverJob.join()
         }
-    }
-    catch (e: Exception) {
+    } catch (e: Exception) {
         log.error("Error! ${e.message}", e)
-        println("Error! ${e.message}")
+        println("Error!  ${e.message}")
     }
 }

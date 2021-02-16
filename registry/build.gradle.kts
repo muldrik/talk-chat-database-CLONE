@@ -19,5 +19,7 @@ dependencies {
     implementation("io.ktor:ktor-client-websockets:$ktor_version")
     implementation("io.ktor:ktor-client-logging:$ktor_version")
 
+    implementation(group = "io.github.rybalkinsd", name = "kohttp", version = "0.12.0")
+
     testImplementation("io.ktor:ktor-server-tests:$ktor_version")
 }
