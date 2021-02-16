@@ -9,3 +9,4 @@ client.log
 client/build/
 registry/build/
 shared/build
+*.db
