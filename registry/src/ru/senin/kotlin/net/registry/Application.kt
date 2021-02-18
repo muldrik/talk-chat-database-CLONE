@@ -37,9 +37,9 @@ fun checkWebSocketUser(address: UserAddress): Boolean {
         }
         try {
             client.ws(
-                method = HttpMethod.Get,
-                host = address.host,
-                port = address.port,
+                    method = HttpMethod.Get,
+                    host = address.host,
+                    port = address.port,
             ) {}
             return@runBlocking true
         } catch (e: Exception) {
@@ -55,7 +55,7 @@ fun checkUdpUser(address: UserAddress): Boolean {
         while (true) {
             try {
                 socket = aSocket(ActorSelectorManager(Dispatchers.IO)).udp()
-                    .connect(InetSocketAddress(address.host, address.port))
+                        .connect(InetSocketAddress(address.host, address.port))
                 break
             } catch (e: Exception) {
                 numberOfAttempts++

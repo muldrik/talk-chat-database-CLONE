@@ -10,7 +10,7 @@ import ru.senin.kotlin.net.Protocol
 import ru.senin.kotlin.net.UserAddress
 import java.util.concurrent.ConcurrentHashMap
 
-class HashMapProcessor: DataProcessor {
+class HashMapProcessor : DataProcessor {
     private val users = ConcurrentHashMap<String, UserAddress>()
     private val numberOfAttempts = ConcurrentHashMap<String, Int>()
 
@@ -51,7 +51,7 @@ class HashMapProcessor: DataProcessor {
     }
 }
 
-class SqlProcessor: DataProcessor {
+class SqlProcessor : DataProcessor {
 
     object UserInfos : IntIdTable() {
         val name = varchar("name", 50)
@@ -63,6 +63,7 @@ class SqlProcessor: DataProcessor {
 
     class UserInfo(id: EntityID<Int>) : IntEntity(id) {
         companion object : IntEntityClass<UserInfo>(UserInfos)
+
         var name by UserInfos.name
         var protocol by UserInfos.protocol
         var host by UserInfos.host
@@ -79,14 +80,14 @@ class SqlProcessor: DataProcessor {
         }
     }
 
-    fun userToAddress(user: ResultRow): UserAddress {
-        val protocol = when(user[UserInfos.protocol]) {
+    private fun userToAddress(user: UserInfo): UserAddress {
+        val protocol = when (user.protocol) {
             "http" -> Protocol.HTTP
             "ws" -> Protocol.WEBSOCKET
             "udp" -> Protocol.UDP
             else -> Protocol.HTTP
         }
-        return UserAddress(protocol, user[UserInfos.host], user[UserInfos.port])
+        return UserAddress(protocol, user.host, user.port)
     }
 
     override fun addUser(name: String, userAddress: UserAddress) {
@@ -118,8 +119,7 @@ class SqlProcessor: DataProcessor {
     override fun getUsersMap(): Map<String, UserAddress> {
         lateinit var result: Map<String, UserAddress>
         transaction {
-            println(UserInfos.selectAll().associateBy({ it[UserInfos.name] }, { userToAddress(it) }).toString())
-            result = UserInfos.selectAll().associateBy({ it[UserInfos.name] }, { userToAddress(it) })
+            result = UserInfo.all().associateBy({ it.name }, { userToAddress(it) })
         }
         return result
     }
@@ -132,16 +132,15 @@ class SqlProcessor: DataProcessor {
 
     override fun updateAttempts() {
         transaction {
-            UserInfos.selectAll().forEach { user ->
-                user[UserInfos.numberOfAttempts].let {
+            UserInfo.all().forEach { user ->
+                user.numberOfAttempts.let {
                     if (!checkUser(userToAddress(user)))
-                        user[UserInfos.numberOfAttempts] = it + 1
+                        user.numberOfAttempts = it + 1
                     else
-                        user[UserInfos.numberOfAttempts] = 0
+                        user.numberOfAttempts = 0
                 }
+                if (user.numberOfAttempts > 3) user.delete()
             }
-            UserInfos.deleteWhere { UserInfos.numberOfAttempts greater 3 }
         }
     }
-
 }
