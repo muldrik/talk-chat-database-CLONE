@@ -5,20 +5,24 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import io.ktor.application.*
 import io.ktor.config.*
 import io.ktor.http.*
+import io.ktor.server.engine.*
 import io.ktor.server.testing.*
+import org.junit.After
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import ru.senin.kotlin.net.Protocol
 import ru.senin.kotlin.net.UserAddress
 import ru.senin.kotlin.net.UserInfo
+import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.fail
 
 fun Application.testModule() {
-
     (environment.config as MapApplicationConfig).apply {
-        // define test environment here
+
     }
     module(testing = true)
 }
@@ -30,6 +34,31 @@ class ApplicationTest {
     private val testHttpAddressUpdated = UserAddress(Protocol.UDP, "127.0.0.1", 8888)
     private val newTestHttpAddress = UserAddress(Protocol.WEBSOCKET, "127.0.0.1", 1234)
     private val userData = UserInfo(testUserName, testHttpAddress)
+
+    companion object {
+        @BeforeAll
+        @JvmStatic
+        internal fun createRegistry() {
+            val applicationEnvironment = commandLineEnvironment(arrayOf())
+            val config = applicationEnvironment.config
+            val database = config.propertyOrNull("ktor.deployment.database")?.getString()
+            Registry = when(database) {
+                "sql" -> SqlProcessor()
+                "memory" -> HashMapProcessor()
+                else -> HashMapProcessor()
+            }
+        }
+
+        @AfterAll
+        @JvmStatic
+        internal fun deleteRegistry() {
+            val applicationEnvironment = commandLineEnvironment(arrayOf())
+            val config = applicationEnvironment.config
+            val database = config.propertyOrNull("ktor.deployment.database")?.getString()
+            if (database == "sql") File("build/usersDatabase.mv.db").delete()
+
+        }
+    }
 
     @BeforeEach
     fun clearRegistry() {

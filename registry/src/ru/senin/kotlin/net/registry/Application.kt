@@ -22,6 +22,7 @@ import org.jetbrains.exposed.sql.*
 import org.slf4j.event.Level
 import ru.senin.kotlin.net.*
 import java.net.InetSocketAddress
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 
@@ -96,8 +97,8 @@ interface DataProcessor {
     fun updateAttempts()
 }
 
-var Registry: DataProcessor = SqlProcessor()
-
+//var Registry: DataProcessor = SqlProcessor()
+lateinit var Registry: DataProcessor
 fun main(args: Array<String>) {
 
     thread {
@@ -107,18 +108,35 @@ fun main(args: Array<String>) {
 
         }
     }
-    EngineMain.main(args)
+    val applicationEnvironment = commandLineEnvironment(args)
+    val engine = NettyApplicationEngine(applicationEnvironment) {
+        val config = applicationEnvironment.config
+        Registry = when(config.propertyOrNull("ktor.deployment.database")?.getString()) {
+            "sql" -> SqlProcessor()
+            "memory" -> HashMapProcessor()
+            else -> HashMapProcessor()
+        }
+        val deploymentConfig = config.config("ktor.deployment")
+        loadCommonConfiguration(deploymentConfig)
+        deploymentConfig.propertyOrNull("requestQueueLimit")?.getString()?.toInt()?.let {
+            requestQueueLimit = it
+        }
+        deploymentConfig.propertyOrNull("shareWorkGroup")?.getString()?.toBoolean()?.let {
+            shareWorkGroup = it
+        }
+        deploymentConfig.propertyOrNull("responseWriteTimeoutSeconds")?.getString()?.toInt()?.let {
+            responseWriteTimeoutSeconds = it
+        }
+    }
+    engine.addShutdownHook {
+        engine.stop(3, 5, TimeUnit.SECONDS)
+    }
+    engine.start(true)
 }
 
 @Suppress("UNUSED_PARAMETER")
 @JvmOverloads
 fun Application.module(testing: Boolean = false) {
-    //Это почему-то не работает, видимо порядок выполнения операций в этой функции очень сомнительный
-    //val database: String = environment.config.property("database").getString()
-    /*Registry = when(database) {
-        "sql" -> SqlProcessor()
-        else -> HashMapProcessor()
-    }*/
     install(CallLogging) {
         level = Level.INFO
         filter { call -> call.request.path().startsWith("/") }

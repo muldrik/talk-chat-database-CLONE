@@ -72,7 +72,7 @@ class SqlProcessor : DataProcessor {
     }
 
     init {
-        Database.connect("jdbc:h2:./usersDatabase", driver = "org.h2.Driver")
+        Database.connect("jdbc:h2:./build/usersDatabase", driver = "org.h2.Driver")
 
         transaction {
             addLogger(StdOutSqlLogger)
