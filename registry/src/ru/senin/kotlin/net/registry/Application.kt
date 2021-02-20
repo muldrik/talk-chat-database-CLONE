@@ -13,15 +13,18 @@ import io.ktor.network.sockets.*
 import io.ktor.request.*
 import io.ktor.response.*
 import io.ktor.routing.*
+import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import org.jetbrains.exposed.sql.*
 import org.slf4j.event.Level
 import ru.senin.kotlin.net.*
 import java.net.InetSocketAddress
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+
 
 fun checkHttpUser(address: UserAddress): Boolean {
     val response = "http://${address.host}:${address.port}".httpGet()
@@ -35,9 +38,9 @@ fun checkWebSocketUser(address: UserAddress): Boolean {
         }
         try {
             client.ws(
-                method = HttpMethod.Get,
-                host = address.host,
-                port = address.port,
+                    method = HttpMethod.Get,
+                    host = address.host,
+                    port = address.port,
             ) {}
             return@runBlocking true
         } catch (e: Exception) {
@@ -53,7 +56,7 @@ fun checkUdpUser(address: UserAddress): Boolean {
         while (true) {
             try {
                 socket = aSocket(ActorSelectorManager(Dispatchers.IO)).udp()
-                    .connect(InetSocketAddress(address.host, address.port))
+                        .connect(InetSocketAddress(address.host, address.port))
                 break
             } catch (e: Exception) {
                 numberOfAttempts++
@@ -85,34 +88,50 @@ fun checkUser(address: UserAddress): Boolean {
     }
 }
 
+interface DataProcessor {
+    fun addUser(name: String, userAddress: UserAddress)
+    fun deleteUser(name: String)
+    fun isUserRegistered(name: String): Boolean
+    fun getUsersMap(): Map<String, UserAddress>
+    fun clear()
+    fun updateAttempts()
+}
+
+//var Registry: DataProcessor = SqlProcessor()
+lateinit var Registry: DataProcessor
 fun main(args: Array<String>) {
+
     thread {
         while (true) {
             Thread.sleep(1000 * 120)
-            for ((user, address) in Registry.users) {
-                Registry.numberOfAttempts[user]?.let {
-                    if (!checkUser(address))
-                        Registry.numberOfAttempts[user] = it + 1
-                    else
-                        Registry.numberOfAttempts[user] = 0
-                }
+            Registry.updateAttempts()
 
-                if (Registry.numberOfAttempts[user] == 3)
-                    deleteUser(user)
-            }
         }
     }
-    EngineMain.main(args)
-}
-
-object Registry {
-    val users = ConcurrentHashMap<String, UserAddress>()
-    val numberOfAttempts = ConcurrentHashMap<String, Int>()
-}
-
-fun deleteUser(name: String) {
-    Registry.users.remove(name)
-    Registry.numberOfAttempts.remove(name)
+    val applicationEnvironment = commandLineEnvironment(args)
+    val engine = NettyApplicationEngine(applicationEnvironment) {
+        val config = applicationEnvironment.config
+        Registry = when(config.propertyOrNull("ktor.deployment.database")?.getString()) {
+            "sql" -> SqlProcessor()
+            "memory" -> HashMapProcessor()
+            else -> HashMapProcessor()
+        }
+        val deploymentConfig = config.config("ktor.deployment")
+        loadCommonConfiguration(deploymentConfig)
+        deploymentConfig.propertyOrNull("requestQueueLimit")?.getString()?.toInt()?.let {
+            requestQueueLimit = it
+        }
+        deploymentConfig.propertyOrNull("shareWorkGroup")?.getString()?.toBoolean()?.let {
+            shareWorkGroup = it
+        }
+        deploymentConfig.propertyOrNull("responseWriteTimeoutSeconds")?.getString()?.toInt()?.let {
+            responseWriteTimeoutSeconds = it
+        }
+    }
+    engine.addShutdownHook {
+        engine.stop(3, 5, TimeUnit.SECONDS)
+    }
+    engine.start(true)
 }
 
 @Suppress("UNUSED_PARAMETER")
@@ -148,30 +167,28 @@ fun Application.module(testing: Boolean = false) {
             val user = call.receive<UserInfo>()
             val name = user.name
             checkUserName(name) ?: throw IllegalUserNameException()
-            if (Registry.users.containsKey(name)) {
+            if (Registry.isUserRegistered(name)) {
                 throw UserAlreadyRegisteredException()
             }
-            Registry.users[name] = user.address
-            Registry.numberOfAttempts[name] = 0
+            Registry.addUser(name, user.address)
             call.respond(mapOf("status" to "ok"))
         }
 
         get("/v1/users") {
-            call.respond(Registry.users)
+            call.respond(Registry.getUsersMap())
         }
 
         put("/v1/users/{name}") {
             val address = call.receive<UserAddress>()
             val name: String = call.parameters["name"].toString()
             checkUserName(name) ?: throw IllegalUserNameException()
-            Registry.users[name] = address
-            Registry.numberOfAttempts[name] = 0
+            Registry.addUser(name, address)
             call.respond(mapOf("status" to "ok"))
         }
 
         delete("/v1/users/{name}") {
             val name: String = call.parameters["name"].toString()
-            deleteUser(name)
+            Registry.deleteUser(name)
             call.respond(mapOf("status" to "ok"))
         }
     }
