@@ -183,6 +183,7 @@ fun Application.module(testing: Boolean = false) {
             val address = call.receive<UserAddress>()
             val name: String = call.parameters["name"].toString()
             checkUserName(name) ?: throw IllegalUserNameException()
+            Registry.deleteUser(name)
             Registry.addUser(name, address)
             call.respond(mapOf("status" to "ok"))
         }
