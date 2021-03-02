@@ -54,14 +54,14 @@ class HashMapProcessor : DataProcessor {
 class SqlProcessor : DataProcessor {
 
     object UserInfos : IntIdTable() {
-        val name = varchar("name", 50)
+        val name = varchar("name", 50).uniqueIndex()
         val protocol: Column<String> = varchar("protocol", 50)
         val host: Column<String> = varchar("host", 50)
         val port: Column<Int> = integer("port")
     }
 
     object UsersAttempts : IntIdTable() {
-        val name = varchar("name", 50)
+        val name = varchar("name", 50).uniqueIndex()
         val numberOfAttempts: Column<Int> = integer("number_of_attempts")
     }
 
