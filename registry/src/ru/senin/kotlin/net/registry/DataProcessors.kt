@@ -58,6 +58,10 @@ class SqlProcessor : DataProcessor {
         val protocol: Column<String> = varchar("protocol", 50)
         val host: Column<String> = varchar("host", 50)
         val port: Column<Int> = integer("port")
+    }
+
+    object UsersAttempts : IntIdTable() {
+        val name = varchar("name", 50)
         val numberOfAttempts: Column<Int> = integer("number_of_attempts")
     }
 
@@ -68,7 +72,13 @@ class SqlProcessor : DataProcessor {
         var protocol by UserInfos.protocol
         var host by UserInfos.host
         var port by UserInfos.port
-        var numberOfAttempts by UserInfos.numberOfAttempts
+    }
+
+    class UserAttempts(id: EntityID<Int>) : IntEntity(id) {
+        companion object : IntEntityClass<UserAttempts>(UsersAttempts)
+
+        var name by UsersAttempts.name
+        var numberOfAttempts by UsersAttempts.numberOfAttempts
     }
 
     init {
@@ -77,6 +87,7 @@ class SqlProcessor : DataProcessor {
         transaction {
             addLogger(StdOutSqlLogger)
             SchemaUtils.create(UserInfos)
+            SchemaUtils.create(UsersAttempts)
         }
     }
 
@@ -97,6 +108,9 @@ class SqlProcessor : DataProcessor {
                 protocol = userAddress.protocol.protocol
                 host = userAddress.host
                 port = userAddress.port
+            }
+            UserAttempts.new {
+                this.name = name
                 numberOfAttempts = 0
             }
         }
@@ -105,6 +119,7 @@ class SqlProcessor : DataProcessor {
     override fun deleteUser(name: String) {
         transaction {
             UserInfos.deleteWhere { UserInfos.name eq name }
+            UsersAttempts.deleteWhere { UsersAttempts.name eq name }
         }
     }
 
@@ -127,19 +142,22 @@ class SqlProcessor : DataProcessor {
     override fun clear() {
         transaction {
             UserInfos.deleteAll()
+            UsersAttempts.deleteAll()
         }
     }
 
     override fun updateAttempts() {
         transaction {
-            UserInfo.all().forEach { user ->
+            UserAttempts.all().forEach { user ->
                 user.numberOfAttempts.let {
-                    if (!checkUser(userToAddress(user)))
+                    if (!checkUser(userToAddress(UserInfo.find { UserInfos.name eq user.name }.first())))
                         user.numberOfAttempts = it + 1
                     else
                         user.numberOfAttempts = 0
                 }
-                if (user.numberOfAttempts > 3) user.delete()
+                if (user.numberOfAttempts > 3) {
+                    deleteUser(user.name)
+                }
             }
         }
     }
