@@ -54,7 +54,7 @@ class HashMapProcessor : DataProcessor {
 class SqlProcessor(path: String) : DataProcessor {
 
     object UserInfos : IntIdTable() {
-        val name = varchar("name", 50).uniqueIndex()
+        val name = varchar("name", 50)
         val protocol: Column<String> = varchar("protocol", 50)
         val host: Column<String> = varchar("host", 50)
         val port: Column<Int> = integer("port")
@@ -99,6 +99,7 @@ class SqlProcessor(path: String) : DataProcessor {
                 port = userAddress.port
                 numberOfAttempts = 0
             }
+
         }
     }
 
@@ -109,11 +110,9 @@ class SqlProcessor(path: String) : DataProcessor {
     }
 
     override fun isUserRegistered(name: String): Boolean {
-        var result = false
-        transaction {
-            result = (UserInfos.select { UserInfos.name eq name }.count() > 0)
+        return transaction {
+            (UserInfos.select { UserInfos.name eq name }.count() > 0)
         }
-        return result
     }
 
     override fun getUsersMap(): Map<String, UserAddress> {
