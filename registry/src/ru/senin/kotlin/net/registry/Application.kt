@@ -112,7 +112,8 @@ fun main(args: Array<String>) {
     val engine = NettyApplicationEngine(applicationEnvironment) {
         val config = applicationEnvironment.config
         Registry = when(config.propertyOrNull("ktor.deployment.database")?.getString()) {
-            "sql" -> SqlProcessor()
+            "sql" -> SqlProcessor(config.propertyOrNull("ktor.deployment.database_path")
+                    ?.getString() ?: "./build/usersDatabase")
             "memory" -> HashMapProcessor()
             else -> HashMapProcessor()
         }
@@ -182,6 +183,7 @@ fun Application.module(testing: Boolean = false) {
             val address = call.receive<UserAddress>()
             val name: String = call.parameters["name"].toString()
             checkUserName(name) ?: throw IllegalUserNameException()
+            Registry.deleteUser(name)
             Registry.addUser(name, address)
             call.respond(mapOf("status" to "ok"))
         }

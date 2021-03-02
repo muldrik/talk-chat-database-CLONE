@@ -51,10 +51,10 @@ class HashMapProcessor : DataProcessor {
     }
 }
 
-class SqlProcessor : DataProcessor {
+class SqlProcessor(path: String) : DataProcessor {
 
     object UserInfos : IntIdTable() {
-        val name = varchar("name", 50)
+        val name = varchar("name", 50).uniqueIndex()
         val protocol: Column<String> = varchar("protocol", 50)
         val host: Column<String> = varchar("host", 50)
         val port: Column<Int> = integer("port")
@@ -72,7 +72,7 @@ class SqlProcessor : DataProcessor {
     }
 
     init {
-        Database.connect("jdbc:h2:./build/usersDatabase", driver = "org.h2.Driver")
+        Database.connect("jdbc:h2:$path", driver = "org.h2.Driver")
 
         transaction {
             addLogger(StdOutSqlLogger)
@@ -99,6 +99,7 @@ class SqlProcessor : DataProcessor {
                 port = userAddress.port
                 numberOfAttempts = 0
             }
+
         }
     }
 
@@ -109,19 +110,15 @@ class SqlProcessor : DataProcessor {
     }
 
     override fun isUserRegistered(name: String): Boolean {
-        var result = false
-        transaction {
-            result = (UserInfos.select { UserInfos.name eq name }.count() > 0)
+        return transaction {
+            (UserInfos.select { UserInfos.name eq name }.count() > 0)
         }
-        return result
     }
 
     override fun getUsersMap(): Map<String, UserAddress> {
-        lateinit var result: Map<String, UserAddress>
-        transaction {
-            result = UserInfo.all().associateBy({ it.name }, { userToAddress(it) })
+        return transaction {
+            UserInfo.all().associateBy({ it.name }, { userToAddress(it) })
         }
-        return result
     }
 
     override fun clear() {

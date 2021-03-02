@@ -14,6 +14,9 @@ ktor {
         database = memory
         //OR
         database = sql
+        path:{PATH}
+        // If not found default path is used: ./build/usersDatabase
+        //PATH begins in the folder "registry"
         ...
     }
     ...
