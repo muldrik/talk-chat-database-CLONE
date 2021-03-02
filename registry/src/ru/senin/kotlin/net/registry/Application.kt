@@ -112,7 +112,8 @@ fun main(args: Array<String>) {
     val engine = NettyApplicationEngine(applicationEnvironment) {
         val config = applicationEnvironment.config
         Registry = when(config.propertyOrNull("ktor.deployment.database")?.getString()) {
-            "sql" -> SqlProcessor()
+            "sql" -> SqlProcessor(config.propertyOrNull("ktor.deployment.database_path")
+                    ?.getString() ?: "./build/usersDatabase")
             "memory" -> HashMapProcessor()
             else -> HashMapProcessor()
         }

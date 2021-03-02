@@ -51,7 +51,7 @@ class HashMapProcessor : DataProcessor {
     }
 }
 
-class SqlProcessor : DataProcessor {
+class SqlProcessor(path: String) : DataProcessor {
 
     object UserInfos : IntIdTable() {
         val name = varchar("name", 50)
@@ -72,7 +72,7 @@ class SqlProcessor : DataProcessor {
     }
 
     init {
-        Database.connect("jdbc:h2:./build/usersDatabase", driver = "org.h2.Driver")
+        Database.connect("jdbc:h2:$path", driver = "org.h2.Driver")
 
         transaction {
             addLogger(StdOutSqlLogger)
@@ -117,11 +117,9 @@ class SqlProcessor : DataProcessor {
     }
 
     override fun getUsersMap(): Map<String, UserAddress> {
-        lateinit var result: Map<String, UserAddress>
-        transaction {
-            result = UserInfo.all().associateBy({ it.name }, { userToAddress(it) })
+        return transaction {
+            UserInfo.all().associateBy({ it.name }, { userToAddress(it) })
         }
-        return result
     }
 
     override fun clear() {

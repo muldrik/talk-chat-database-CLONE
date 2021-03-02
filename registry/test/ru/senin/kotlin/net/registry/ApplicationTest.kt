@@ -43,7 +43,8 @@ class ApplicationTest {
             val config = applicationEnvironment.config
             val database = config.propertyOrNull("ktor.deployment.database")?.getString()
             Registry = when(database) {
-                "sql" -> SqlProcessor()
+                "sql" -> SqlProcessor(config.propertyOrNull("ktor.deployment.test_database_path")
+                        ?.getString() ?: "./build/testUsersDatabase")
                 "memory" -> HashMapProcessor()
                 else -> HashMapProcessor()
             }
@@ -55,7 +56,9 @@ class ApplicationTest {
             val applicationEnvironment = commandLineEnvironment(arrayOf())
             val config = applicationEnvironment.config
             val database = config.propertyOrNull("ktor.deployment.database")?.getString()
-            if (database == "sql") File("build/usersDatabase.mv.db").delete()
+            val path = config.propertyOrNull("ktor.deployment.test_database_path")
+                    ?.getString() ?: "./build/testUsersDatabase"
+            if (database == "sql") File("$path.mv.db").delete()
 
         }
     }
