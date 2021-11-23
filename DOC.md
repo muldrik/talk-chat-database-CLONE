@@ -4,7 +4,7 @@
 ### Run client with
     ./gradlew :client:run --args='name=myName registry=http://0.0.0.0:8088 port=8080' --console=plain
    
-#####To change the database modify 
+##### To change the database modify 
     registry/resources/application.conf
     
 ```
