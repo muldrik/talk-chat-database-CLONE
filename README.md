@@ -1,119 +1,97 @@
-# Talk
+# Talk chat
 
-В рамках задания необходимо реализовать систему простых чатов.
+The project implements a simple chat system includin
 
-Система включает
- * сервис реестра пользователей (HTTP REST API)
- * клиентское приложения работающие по протоколу HTTP
+ * user registry service (HTTP REST API)
+ * client app supporting HTTP, UDP or WEBSOCKET
   
-## Сервер для регистрации (подпроект `registry`)
+## Server (`registry` subproject)
 
-Реализовать с использованием [Ktor](https://ktor.io/docs/quickstart-index.html#hello-world)
+Powered by [Ktor](https://ktor.io/)
 
-Сервис должен поддерживать следующий интерфейс:
+The service supports the following interface:
 
- *  Регистрация пользователя 
+ *  User registration 
     ```
     POST /v1/users
-    { "user" : "<name>", "address" : { "host": "<host or ip>", "port":"<port>" } }
+    { "user" : "<name>", "address" : { "protocol" : "<HTTP | WEBSOCKET | UDP>", "host": "<host or ip>", "port": "<port>" } }
     ```
-    В случае успеха ответ `200 OK`
+    If sucessful return `200 OK`
     ```
     { "status" : "ok" } 
     ```
-    Если пользователь уже есть - `409 Conflict`
-    Имя пользователя не должно быть пустым, должно состоять из [a-zA-Z0-9-_.]. В случае неверного имени - `400 Bad Request` 
+    If the user already exists - `409 Conflict`
+    Username must not be empty and should consist of [a-zA-Z0-9-_.]. Invalid username returns - `400 Bad Request` 
 
- *  Обновление пользователя 
+ *  User update 
     ```
     PUT /v1/users/{user}
-    { "host": "<host or ip>", "port": "<port>" }
+    { "protocol" : "<HTTP | WEBSOCKET | UDP>", "host": "<host or ip>", "port": "<port>" }
     ```
-    В случае успеха ответ `200 OK`
+    On success return `200 OK`
     ```
     { "status" : "ok" }     
     ```
-    Если пользователя нет - создать как при регистрации
-    Имя пользователя не должно быть пустым, должно состоять из [a-zA-Z0-9-_.]. В случае неверного имени - `400 Bad Request` 
+    If the user does not exist - create a new one
+    
+    Username must not be empty and should consist of [a-zA-Z0-9-_.]. Invalid username returns - `400 Bad Request` 
 
- *  Получение списка пользователей 
+ *  Retreiving the user list
     ```
     GET /v1/users/
     ```
-    В случае успеха ответ `200 OK`. Пример:
+    On success returns `200 OK`. Example:
     ```
     {
-      "user1" : {
+      "ws1" : {
+        "protocol" : "WEBSOCKET",
         "host" : "127.0.0.1",
         "port" : 8083
       },
-      "user2" : {
-        "host" : "myhost.example.com",
+      "udp2" : {
+        "protocol" : "UDP",
+        "host" : "127.0.0.1",
         "port" : 3002
       },
-      "user3" : {
-        "host" : "192.168.0.1",
+      "http1" : {
+        "protocol" : "HTTP",
+        "host" : "127.0.0.1",
         "port" : 8080
-      } 
+      }
+    }
     ```
 
- *  Удаление пользователя 
+ *  Deleting a user
     ```
     DELETE /v1/users/{user}
     ```
-    В случае успеха ответ `200 OK`
+    On success return `200 OK`
     ```
     { "status" : "ok" }     
     ```
-    Если пользователя нет отвечать как при успешном удалении
 
-См. [Ktor REST API](https://ktor.io/docs/guides-api.html)
+### Local database
+By default the user data is stored in-memory, this can be changed to store data in an SQL database by changing config file (example in DOC.md)
 
-### Тесты
 
-Необходимо реализовать тесты для всех методов REST API.
-Обратите внимание на проверку имени пользователя, добавление/изменение существующего пользователя 
-и прочие подобные сценарии.  
+### Tests
 
-### Дополнительное задание
+`./gradlew :registry:test` to run server tests
 
-Реализовать периодическую (раз в 2-3 минуты) проверку доступности клиентов со стороны реестра с помощью запроса к `/v1/health`
-Клиентов, которые недоступны более 3-х проверок подряд удалять из реестра.
+`./gradlew :client:test` to run client app tests
 
-## Клиентское приложение (подпроект `client`)
+Note: every 3 minutes /v1/health is queried. Clients not responding 3 times in a row are automatically deleted
 
-Приложение реализует command line чат со следующими командами: 
+## Client app (`client` subproject)
 
-* `:update` - Обновление списка пользователей, вывод пользователей и их адресов.
-              Сообщение об ошибке, если реестр недоступен. 
-              Если выбранный пользователь был удалён - сбросить пользователя для отправки сообщений.
-* `:user <user>` - Выбор пользователя для отправки сообщений. 
-                   Сообщение об ошибке если пользователя нет или его протокол пока не поддерживается.
-* `<text>` - Отправка сообщения выбранному пользователю. 
-             Сообщение об ошибке если пользователь не выбран.
-             Сообщение об ошибке, если отправка сообщения не удалась.
-* `:exit` - Выход. Перед выходом удаляем клиента из реестра. 
+CLI chat with the following commands 
+
+* `:update` - Update the available user list quering the registry
+* `:user <user>` - Choose a user for sending messages
+* `<text>` - Send a message to the selected user
+             Error, if user isn't found
+* `:exit` - Exit, deleting the client from the register
   
-Клиент принимает сообщение по протоколу HTTP. 
-Порт по умолчанию - `8080`, путь  - `/v1/message` (см. [Ktor REST API](https://ktor.io/docs/guides-api.html))
 
-Сообщение передаётся в виде json: `{ "user" : "<имя отправителя>", "text": "<текст сообщение>" }`
-При старте клиента доступны следующие опции:
+#### Examples to running and configuring can be found in DOC.md
 
-* `--name` - имя клиента
-* `--registry` - базовый URL реестра, например `http://127.0.01:8088`
-* `--host` - hostname или ip, на котором клиент будет слушать сообщения
-* `--port` - порт (Int), на котором клиент будет слушать сообщения
-* `--public-url` - URL по которому клиент доступен извне (может отличаться от http://<host>:<port>, если используется прокси, например ngrok).
- 
-При старте клиент регистрируется в реестре со `host` и `port` из `public-url` и выполняет команду `:update`. 
-   
-### Тесты
-
-Необходимо реализовать тесты приёма сообщений. 
-Для этого можно установить свой ChatMessageListener, отправить сообщение
-с помощью соответствующего ChatClient и убедиться, что оно доставлено.    
-   
-### Дополнительное задание
-
-Реализовать периодический (раз в 2-3 минуты) опрос реестра и обновление списка пользователей.
